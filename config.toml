@@ -1,0 +1,15 @@
+[plugin]
+author = "Augment"
+category = "ai"
+description = "DeepSeek AI 对话插件，支持流式对话"
+disabled = false
+id = "deepseek_plugin"
+library = "deepseek"
+min_app_version = "0.1.0"
+name = "DeepSeek Chat"
+tags = ["ai", "chat", "deepseek", "llm"]
+version = "1.0.0"
+
+[user]
+api_key = "user-key"
+api_url = "https://api.deepseek.com/v1/chat/completions"
