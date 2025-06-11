@@ -2,7 +2,7 @@ use futures_util::StreamExt;
 use plugin_interfaces::{
     create_plugin_interface_from_handler, log_error, log_info, log_warn,
     pluginui::{Context, Ui},
-    PluginHandler, PluginInterface, PluginMetadata, PluginStreamMessage,
+    PluginHandler, PluginInstanceContext, PluginInterface, PluginStreamMessage,
 };
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use serde::{Deserialize, Serialize};
@@ -62,13 +62,11 @@ struct Config {
 /// DeepSeek 对话插件
 #[derive(Clone)]
 pub struct DeepSeekPlugin {
-    metadata: PluginMetadata,
     runtime: Option<Arc<Runtime>>,
 
     // 配置
     api_key: String,
     api_url: String,
-    is_connected: bool,
 
     // HTTP 客户端
     client: Arc<Mutex<Option<reqwest::Client>>>,
@@ -77,17 +75,6 @@ pub struct DeepSeekPlugin {
 impl DeepSeekPlugin {
     fn new() -> Self {
         Self {
-            is_connected: false,
-            metadata: PluginMetadata {
-                id: "deepseek_plugin".to_string(),
-                disabled: false,
-                name: "DeepSeek Chat".to_string(),
-                description: "DeepSeek AI 对话插件".to_string(),
-                version: "1.0.0".to_string(),
-                author: Some("Augment".to_string()),
-                library_path: None,
-                config_path: "config.toml".to_string(),
-            },
             runtime: None,
             api_key: String::new(),
             api_url: "https://api.deepseek.com/v1/chat/completions".to_string(),
@@ -114,7 +101,7 @@ impl DeepSeekPlugin {
 
     /// 保存用户配置到config.toml文件
     fn save_user_config(&self) {
-        let config_path = Path::new(&self.metadata.config_path);
+        let config_path = Path::new("user.toml");
 
         // 读取现有配置
         let mut config = match self.load_config() {
@@ -150,7 +137,10 @@ impl DeepSeekPlugin {
                 if let Err(e) = fs::write(config_path, toml_string) {
                     log_error!("Failed to save config to {}: {}", config_path.display(), e);
                 } else {
-                    log_info!("User configuration saved successfully to {}", config_path.display());
+                    log_info!(
+                        "User configuration saved successfully to {}",
+                        config_path.display()
+                    );
                 }
             }
             Err(e) => {
@@ -161,7 +151,7 @@ impl DeepSeekPlugin {
 
     /// 从config.toml文件加载配置
     fn load_config(&self) -> Result<Config, Box<dyn std::error::Error>> {
-        let config_path = Path::new(&self.metadata.config_path);
+        let config_path = Path::new("user.toml");
 
         if !config_path.exists() {
             return Err(format!("Config file not found: {}", config_path.display()).into());
@@ -199,6 +189,7 @@ impl DeepSeekPlugin {
     async fn send_streaming_request(
         self: Arc<Self>,
         message: String,
+        plugin_ctx: &PluginInstanceContext,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         if self.api_key.trim().is_empty() {
             return Err("API Key 未设置".into());
@@ -248,7 +239,7 @@ impl DeepSeekPlugin {
         }
 
         // 开始流式传输
-        let stream_id = match self.send_message_stream_start("chat", Some("DeepSeek 对话")) {
+        let stream_id = match self.send_message_stream_start(plugin_ctx) {
             Ok(id) => id,
             Err(e) => return Err(format!("启动流式传输失败: {}", e).into()),
         };
@@ -268,7 +259,7 @@ impl DeepSeekPlugin {
                     // 检查是否为结束标记
                     if data == "[DONE]" {
                         log_info!("Stream completed");
-                        let _ = self.send_message_stream_end(&stream_id, true, None);
+                        let _ = self.send_message_stream_end(&stream_id, true, None, plugin_ctx);
                         return Ok(());
                     }
 
@@ -278,14 +269,15 @@ impl DeepSeekPlugin {
                             for choice in chunk_data.choices {
                                 if let Some(content) = choice.delta.content {
                                     has_content = true;
-                                    if let Err(e) =
-                                        self.send_message_stream(&stream_id, &content, false)
-                                    {
+                                    if let Err(e) = self.send_message_stream(
+                                        &stream_id, &content, false, plugin_ctx,
+                                    ) {
                                         log_error!("Failed to send stream chunk: {}", e);
                                         let _ = self.send_message_stream_end(
                                             &stream_id,
                                             false,
                                             Some(&e.to_string()),
+                                            plugin_ctx,
                                         );
                                         return Err(e.into());
                                     }
@@ -301,9 +293,10 @@ impl DeepSeekPlugin {
         }
 
         if has_content {
-            let _ = self.send_message_stream_end(&stream_id, true, None);
+            let _ = self.send_message_stream_end(&stream_id, true, None, plugin_ctx);
         } else {
-            let _ = self.send_message_stream_end(&stream_id, false, Some("未收到有效回复"));
+            let _ =
+                self.send_message_stream_end(&stream_id, false, Some("未收到有效回复"), plugin_ctx);
         }
 
         Ok(())
@@ -311,7 +304,7 @@ impl DeepSeekPlugin {
 }
 
 impl PluginHandler for DeepSeekPlugin {
-    fn update_ui(&mut self, _ctx: &Context, ui: &mut Ui) {
+    fn update_ui(&mut self, _ctx: &Context, ui: &mut Ui, _plugin_ctx: &PluginInstanceContext) {
         ui.label("DeepSeek AI 配置");
 
         // API Key 输入
@@ -342,9 +335,19 @@ impl PluginHandler for DeepSeekPlugin {
         }
     }
 
-    fn on_mount(&mut self, metadata: &PluginMetadata) -> Result<(), Box<dyn std::error::Error>> {
-        log_info!("[{}] Plugin mount successfully", self.metadata.name);
-        self.metadata = metadata.clone();
+    fn on_mount(
+        &mut self,
+        plugin_ctx: &PluginInstanceContext,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let metadata = plugin_ctx.get_metadata();
+        log_info!("[{}] Plugin mount successfully", metadata.name);
+        log_info!(
+            "Config Metadata: id={}, name={}, version={}, instance_id={}",
+            metadata.id,
+            metadata.name,
+            metadata.version,
+            metadata.instance_id.clone().unwrap_or("None".to_string())
+        );
 
         // 加载用户配置
         self.load_user_config();
@@ -364,28 +367,79 @@ impl PluginHandler for DeepSeekPlugin {
         Ok(())
     }
 
-    fn on_dispose(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        log_info!("[{}] Plugin disposed successfully", self.metadata.name);
-        Ok(())
-    }
-
-    fn on_connect(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        log_info!("[{}] Connected", self.metadata.name);
-        self.is_connected = true;
-        Ok(())
-    }
-
-    fn on_disconnect(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        log_warn!("[{}] Disconnected", self.metadata.name);
-        self.is_connected = false;
-        Ok(())
-    }
-
-    fn handle_message(&self, message: &str) -> Result<String, Box<dyn std::error::Error>> {
-        if !self.is_connected {
-            return Err("插件未连接".into());
+    fn on_dispose(
+        &mut self,
+        plugin_ctx: &PluginInstanceContext,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let metadata = plugin_ctx.get_metadata();
+        log_info!(
+            "Plugin disposed successfully. Metadata: id={}, name={}, version={}, instance_id={}",
+            metadata.id,
+            metadata.name,
+            metadata.version,
+            metadata.instance_id.clone().unwrap_or("None".to_string())
+        );
+        // 关闭 tokio 异步运行时
+        if let Some(runtime) = self.runtime.clone() {
+            // Use Arc::try_unwrap to get ownership if this is the last reference
+            match Arc::try_unwrap(runtime) {
+                Ok(runtime) => {
+                    runtime.shutdown_timeout(std::time::Duration::from_millis(10));
+                    log_info!("Tokio runtime shutdown successfully");
+                }
+                Err(_) => {
+                    log_warn!("Cannot shutdown runtime: other references still exist");
+                }
+            }
+        } else {
+            log_warn!("Tokio runtime not initialized, cannot shutdown");
         }
-        log_info!("[{}] Received message: {}", self.metadata.name, message);
+        Ok(())
+    }
+
+    fn on_connect(
+        &mut self,
+        plugin_ctx: &PluginInstanceContext,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let metadata = plugin_ctx.get_metadata();
+        log_info!(
+            "Plugin connect successfully. Metadata: id={}, name={}, version={}, instance_id={}",
+            metadata.id,
+            metadata.name,
+            metadata.version,
+            metadata.instance_id.clone().unwrap_or("None".to_string())
+        );
+        Ok(())
+    }
+
+    fn on_disconnect(
+        &mut self,
+        plugin_ctx: &PluginInstanceContext,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let metadata = plugin_ctx.get_metadata();
+        log_info!(
+            "Plugin disconnect successfully. Metadata: id={}, name={}, version={}, instance_id={}",
+            metadata.id,
+            metadata.name,
+            metadata.version,
+            metadata.instance_id.clone().unwrap_or("None".to_string())
+        );
+        Ok(())
+    }
+
+    fn handle_message(
+        &mut self,
+        message: &str,
+        plugin_ctx: &PluginInstanceContext,
+    ) -> Result<String, Box<dyn std::error::Error>> {
+        let metadata = plugin_ctx.get_metadata();
+        log_info!(
+            "Plugin Recive Message. Metadata: id={}, name={}, version={}, instance_id={}",
+            metadata.id,
+            metadata.name,
+            metadata.version,
+            metadata.instance_id.clone().unwrap_or("None".to_string())
+        );
 
         if self.api_key.trim().is_empty() {
             return Err("请先在插件配置中设置 API Key".into());
@@ -395,9 +449,13 @@ impl PluginHandler for DeepSeekPlugin {
         if let Some(runtime) = &self.runtime {
             let self_arc = Arc::new(self.clone());
             let message_clone = message.to_string();
+            let context_clone = plugin_ctx.clone(); // 克隆上下文以便在异步任务中使用
 
             runtime.spawn(async move {
-                if let Err(e) = self_arc.send_streaming_request(message_clone).await {
+                if let Err(e) = self_arc
+                    .send_streaming_request(message_clone, &context_clone)
+                    .await
+                {
                     log_error!("Failed to send streaming request: {}", e);
                 }
             });
@@ -406,10 +464,6 @@ impl PluginHandler for DeepSeekPlugin {
         } else {
             Err("运行时未初始化".into())
         }
-    }
-
-    fn get_metadata(&self) -> PluginMetadata {
-        self.metadata.clone()
     }
 }
 

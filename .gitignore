@@ -6,3 +6,21 @@ target
 # will have schema files for capabilities auto-completion
 /gen/schemas
 Cargo.lock
+
+# User configuration
+user.toml
+
+# Release artifacts
+*.so
+*.dll
+*.dylib
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
