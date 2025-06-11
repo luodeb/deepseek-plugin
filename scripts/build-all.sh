@@ -49,10 +49,10 @@ LIB_NAMES["aarch64-apple-darwin"]="libdeepseek.dylib"
 
 # Output names
 declare -A OUTPUT_NAMES
-OUTPUT_NAMES["x86_64-unknown-linux-gnu"]="deepseek-linux-x86_64.so"
-OUTPUT_NAMES["x86_64-pc-windows-msvc"]="deepseek-windows-x86_64.dll"
-OUTPUT_NAMES["x86_64-apple-darwin"]="deepseek-macos-x86_64.dylib"
-OUTPUT_NAMES["aarch64-apple-darwin"]="deepseek-macos-aarch64.dylib"
+OUTPUT_NAMES["x86_64-unknown-linux-gnu"]="deepseek-plugin-x86_64.so"
+OUTPUT_NAMES["x86_64-pc-windows-msvc"]="deepseek-plugin-x86_64.dll"
+OUTPUT_NAMES["x86_64-apple-darwin"]="deepseek-plugin-x86_64.dylib"
+OUTPUT_NAMES["aarch64-apple-darwin"]="deepseek-plugin-aarch64.dylib"
 
 # Create output directory
 mkdir -p dist

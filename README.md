@@ -55,7 +55,7 @@ This project uses GitHub Actions for automated building and releasing:
 
 2. **Release (`release.yml`)**: Builds and publishes releases
    - Triggered on git tags (`v*`) or manual dispatch
-   - Builds for Linux, Windows, macOS (x86_64 + ARM64)
+   - Builds for Linux, Windows, macOS (universal binary)
    - Creates GitHub release with compiled libraries
 
 ### Creating a Release
@@ -71,15 +71,15 @@ git push origin v1.0.0
 1. Go to Actions tab in GitHub
 2. Select "Build and Release" workflow
 3. Click "Run workflow"
-4. Enter the desired tag name (e.g., `v1.0.0`)
+4. Enter the desired version (e.g., `v1.0.0`)
+5. Optionally mark as pre-release
 
 ### Release Assets
 
 Each release includes:
-- `deepseek-linux-x86_64.so` - Linux x86_64
-- `deepseek-windows-x86_64.dll` - Windows x86_64  
-- `deepseek-macos-x86_64.dylib` - macOS Intel
-- `deepseek-macos-aarch64.dylib` - macOS Apple Silicon
+- `deepseek-plugin-x86_64.so` - Linux x86_64
+- `deepseek-plugin-x86_64.dll` - Windows x86_64
+- `deepseek-plugin-universal.dylib` - macOS Universal (Intel + Apple Silicon)
 
 ## Configuration
 
