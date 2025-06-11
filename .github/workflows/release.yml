@@ -44,7 +44,7 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               tag_name: `${{ github.event.inputs.version || github.ref_name }}`,
-              name: `DeepSeek Plugin v${{ env.PACKAGE_VERSION }}`,
+              name: `plugin Plugin v${{ env.PACKAGE_VERSION }}`,
               body: 'Release created by GitHub Actions. See the assets below to download and install.',
               draft: true,
               prerelease: ${{ github.event.inputs.prerelease || 'false' }}
@@ -61,17 +61,17 @@ jobs:
         include:
           - platform: 'macos-latest'
             target: 'universal-apple-darwin'
-            lib_name: 'libdeepseek.dylib'
+            lib_name: 'libplugin.dylib'
             arch: 'universal'
             file_extension: 'dylib'
           - platform: 'ubuntu-22.04'
             target: 'x86_64-unknown-linux-gnu'
-            lib_name: 'libdeepseek.so'
+            lib_name: 'libplugin.so'
             arch: 'x86_64'
             file_extension: 'so'
           - platform: 'windows-latest'
             target: 'x86_64-pc-windows-msvc'
-            lib_name: 'deepseek.dll'
+            lib_name: 'plugin.dll'
             arch: 'x86_64'
             file_extension: 'dll'
 
@@ -97,7 +97,7 @@ jobs:
           workspaces: '. -> target'
           key: ${{ matrix.platform }}-${{ matrix.target }}-plugins
 
-      - name: Build deepseek plugin
+      - name: Build plugin plugin
         shell: bash
         run: |
           if [ "${{ matrix.platform }}" = "macos-latest" ]; then
@@ -135,7 +135,7 @@ jobs:
             } else {
               assetPath = 'target/${{ matrix.target }}/release/${{ matrix.lib_name }}';
             }
-            const assetName = 'deepseek-plugin-${{ matrix.arch }}.${{ matrix.file_extension }}';
+            const assetName = 'plugin-plugin-${{ matrix.arch }}.${{ matrix.file_extension }}';
 
             const uploadUrl = `https://uploads.github.com/repos/${context.repo.owner}/${context.repo.repo}/releases/${{ needs.create-release.outputs.release_id }}/assets{?name,label}`;
 
