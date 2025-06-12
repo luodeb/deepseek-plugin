@@ -1,6 +1,9 @@
 use futures_util::StreamExt;
 use plugin_interfaces::{
-    create_plugin_interface_from_handler, log_error, log_info, log_warn, pluginui::{Context, Ui}, HistoryMessage, PluginHandler, PluginInstanceContext, PluginInterface, PluginStreamMessage, StreamError
+    create_plugin_interface_from_handler, log_error, log_info, log_warn,
+    pluginui::{Context, Ui},
+    HistoryMessage, PluginHandler, PluginInstanceContext, PluginInterface, PluginStreamMessage,
+    StreamError,
 };
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use serde::{Deserialize, Serialize};
