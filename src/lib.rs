@@ -313,8 +313,7 @@ impl DeepSeekPlugin {
 
             // 处理 SSE 格式的数据
             for line in chunk_str.split("\n\n") {
-                if line.starts_with("data: ") {
-                    let data = &line[6..];
+                if let Some(data) = line.strip_prefix("data: ") {
 
                     // 检查是否为结束标记
                     if data == "[DONE]" {
@@ -349,7 +348,7 @@ impl DeepSeekPlugin {
                                                     &stream_id,
                                                     false,
                                                     Some(&format!("Error: {}", e)),
-                                                    &plugin_ctx,
+                                                    plugin_ctx,
                                                 );
                                                 return Err(e.into());
                                             }
@@ -557,12 +556,18 @@ pub extern "C" fn create_plugin() -> *mut PluginInterface {
 }
 
 /// 销毁插件实例的导出函数
+///
+/// # Safety
+///
+/// This function is unsafe because it dereferences raw pointers.
+/// The caller must ensure that:
+/// - `interface` is a valid pointer to a `PluginInterface` that was created by `create_plugin`
+/// - `interface` has not been freed or destroyed previously
+/// - The `PluginInterface` and its associated plugin instance are in a valid state
 #[no_mangle]
-pub extern "C" fn destroy_plugin(interface: *mut PluginInterface) {
+pub unsafe extern "C" fn destroy_plugin(interface: *mut PluginInterface) {
     if !interface.is_null() {
-        unsafe {
-            ((*interface).destroy)((*interface).plugin_ptr);
-            let _ = Box::from_raw(interface);
-        }
+        ((*interface).destroy)((*interface).plugin_ptr);
+        let _ = Box::from_raw(interface);
     }
 }
