@@ -314,7 +314,6 @@ impl DeepSeekPlugin {
             // 处理 SSE 格式的数据
             for line in chunk_str.split("\n\n") {
                 if let Some(data) = line.strip_prefix("data: ") {
-
                     // 检查是否为结束标记
                     if data == "[DONE]" {
                         log_info!("Stream completed");
