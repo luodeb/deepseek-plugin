@@ -93,9 +93,9 @@ impl DeepSeekPlugin {
     }
 
     /// 更新配置并初始化客户端
-    fn update_config(&self) {
+    fn update_config(&self, config_path: &str) {
         // 保存用户配置到文件
-        self.save_user_config();
+        self.save_user_config(config_path);
 
         // 初始化HTTP客户端
         if let Some(runtime) = &self.runtime {
@@ -110,11 +110,9 @@ impl DeepSeekPlugin {
     }
 
     /// 保存用户配置到config.toml文件
-    fn save_user_config(&self) {
-        let config_path = Path::new("user.toml");
-
+    fn save_user_config(&self, config_path: &str) {
         // 读取现有配置
-        let mut config = match self.load_config() {
+        let mut config = match self.load_config(config_path) {
             Ok(config) => config,
             Err(_) => {
                 // 如果读取失败，创建默认配置
@@ -141,6 +139,8 @@ impl DeepSeekPlugin {
 
         config.user = Some(user_config);
 
+        let config_path = Path::new(config_path);
+
         // 保存到文件
         match toml::to_string_pretty(&config) {
             Ok(toml_string) => {
@@ -160,8 +160,8 @@ impl DeepSeekPlugin {
     }
 
     /// 从config.toml文件加载配置
-    fn load_config(&self) -> Result<Config, Box<dyn std::error::Error>> {
-        let config_path = Path::new("user.toml");
+    fn load_config(&self, config_path: &str) -> Result<Config, Box<dyn std::error::Error>> {
+        let config_path = Path::new(config_path);
 
         if !config_path.exists() {
             return Err(format!("Config file not found: {}", config_path.display()).into());
@@ -173,8 +173,8 @@ impl DeepSeekPlugin {
     }
 
     /// 加载用户配置
-    fn load_user_config(&mut self) {
-        match self.load_config() {
+    fn load_user_config(&mut self, user_config_path: &str) {
+        match self.load_config(user_config_path) {
             Ok(config) => {
                 if let Some(user_config) = config.user {
                     if let Some(api_key) = user_config.api_key {
@@ -244,7 +244,7 @@ impl DeepSeekPlugin {
     /// 发送流式请求到 DeepSeek API
     async fn send_streaming_request(
         self: Arc<Self>,
-        message: String,
+        _message: String,
         plugin_ctx: &PluginInstanceContext,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         if self.api_key.trim().is_empty() {
@@ -269,21 +269,21 @@ impl DeepSeekPlugin {
 
         // 构建请求体
         let history = plugin_ctx.get_history();
+        log_info!(
+            "History length: {}",
+            history.as_ref().map_or(0, |h| h.len())
+        );
         let messages = if let Some(history_vec) = history {
             self.extract_completed_messages(history_vec.clone())
         } else {
             Vec::new()
         };
-        let mut messages = messages;
-        messages.push(Message::new("user", &message));
 
         let request_body = json!({
             "model": "deepseek-chat",
             "messages": messages,
             "stream": true
         });
-
-        log_info!("Sending streaming request to DeepSeek API");
 
         // 发送请求
         let response = client
@@ -327,9 +327,9 @@ impl DeepSeekPlugin {
                             for choice in chunk_data.choices {
                                 if let Some(content) = choice.delta.content {
                                     has_content = true;
-                                    if let Err(e) = plugin_ctx.send_message_stream(
-                                        &stream_id, &content, false,
-                                    ) {
+                                    if let Err(e) =
+                                        plugin_ctx.send_message_stream(&stream_id, &content, false)
+                                    {
                                         match e {
                                             StreamError::StreamCancelled => {
                                                 log_info!(
@@ -366,16 +366,22 @@ impl DeepSeekPlugin {
         if has_content {
             let _ = plugin_ctx.send_message_stream_end(&stream_id, true, None);
         } else {
-            let _ =
-                plugin_ctx.send_message_stream_end(&stream_id, false, Some("未收到有效回复"));
+            let _ = plugin_ctx.send_message_stream_end(&stream_id, false, Some("未收到有效回复"));
         }
 
         Ok(())
     }
+
+    /// 获取配置文件路径
+    fn get_config_path(&self, plugin_ctx: &PluginInstanceContext) -> String {
+        let metadata = plugin_ctx.get_metadata();
+        let config_path = metadata.config_path.clone();
+        config_path.replace("config.toml", "user.toml")
+    }
 }
 
 impl PluginHandler for DeepSeekPlugin {
-    fn update_ui(&mut self, _ctx: &Context, ui: &mut Ui, _plugin_ctx: &PluginInstanceContext) {
+    fn update_ui(&mut self, _ctx: &Context, ui: &mut Ui, plugin_ctx: &PluginInstanceContext) {
         ui.label("DeepSeek AI 配置");
 
         // API Key 输入
@@ -384,7 +390,8 @@ impl PluginHandler for DeepSeekPlugin {
             let api_key_response = ui.text_edit_singleline(&mut self.api_key);
             if api_key_response.changed() {
                 log_info!("API Key updated");
-                self.update_config();
+                let user_config_path = self.get_config_path(plugin_ctx);
+                self.update_config(&user_config_path);
             }
         });
 
@@ -394,7 +401,8 @@ impl PluginHandler for DeepSeekPlugin {
             let url_response = ui.text_edit_singleline(&mut self.api_url);
             if url_response.changed() {
                 log_info!("API URL updated");
-                self.update_config();
+                let user_config_path = self.get_config_path(plugin_ctx);
+                self.update_config(&user_config_path);
             }
         });
 
@@ -419,16 +427,16 @@ impl PluginHandler for DeepSeekPlugin {
             metadata.version,
             metadata.instance_id.clone().unwrap_or("None".to_string())
         );
-
+        let user_config_path = self.get_config_path(plugin_ctx);
         // 加载用户配置
-        self.load_user_config();
+        self.load_user_config(&user_config_path);
 
         // 初始化 tokio 异步运行时
         match Runtime::new() {
             Ok(runtime) => {
                 self.runtime = Some(Arc::new(runtime));
                 log_info!("Tokio runtime initialized successfully");
-                self.update_config();
+                self.update_config(&user_config_path);
             }
             Err(e) => {
                 log_warn!("Failed to initialize tokio runtime: {}", e);

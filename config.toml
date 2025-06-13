@@ -9,6 +9,7 @@ min_app_version = "0.1.0"
 name = "DeepSeek Chat"
 tags = ["ai", "chat", "deepseek", "llm"]
 version = "1.0.0"
+require_history = true
 
 [user]
 api_key = "user-key"
