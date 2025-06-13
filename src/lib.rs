@@ -299,7 +299,7 @@ impl DeepSeekPlugin {
         }
 
         // 开始流式传输
-        let stream_id = match self.send_message_stream_start(plugin_ctx) {
+        let stream_id = match plugin_ctx.send_message_stream_start() {
             Ok(id) => id,
             Err(e) => return Err(format!("启动流式传输失败: {}", e).into()),
         };
@@ -317,7 +317,7 @@ impl DeepSeekPlugin {
                     // 检查是否为结束标记
                     if data == "[DONE]" {
                         log_info!("Stream completed");
-                        let _ = self.send_message_stream_end(&stream_id, true, None, plugin_ctx);
+                        let _ = plugin_ctx.send_message_stream_end(&stream_id, true, None);
                         return Ok(());
                     }
 
@@ -327,8 +327,8 @@ impl DeepSeekPlugin {
                             for choice in chunk_data.choices {
                                 if let Some(content) = choice.delta.content {
                                     has_content = true;
-                                    if let Err(e) = self.send_message_stream(
-                                        &stream_id, &content, false, plugin_ctx,
+                                    if let Err(e) = plugin_ctx.send_message_stream(
+                                        &stream_id, &content, false,
                                     ) {
                                         match e {
                                             StreamError::StreamCancelled => {
@@ -343,11 +343,10 @@ impl DeepSeekPlugin {
                                                     "Failed to send background stream chunk: {}",
                                                     e
                                                 );
-                                                let _ = self.send_message_stream_end(
+                                                let _ = plugin_ctx.send_message_stream_end(
                                                     &stream_id,
                                                     false,
                                                     Some(&format!("Error: {}", e)),
-                                                    plugin_ctx,
                                                 );
                                                 return Err(e.into());
                                             }
@@ -365,10 +364,10 @@ impl DeepSeekPlugin {
         }
 
         if has_content {
-            let _ = self.send_message_stream_end(&stream_id, true, None, plugin_ctx);
+            let _ = plugin_ctx.send_message_stream_end(&stream_id, true, None);
         } else {
             let _ =
-                self.send_message_stream_end(&stream_id, false, Some("未收到有效回复"), plugin_ctx);
+                plugin_ctx.send_message_stream_end(&stream_id, false, Some("未收到有效回复"));
         }
 
         Ok(())
